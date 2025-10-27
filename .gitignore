@@ -1,0 +1,6 @@
+# Google credentials
+credentials.json
+
+# Python virtual environment (if you have one)
+/venv/
+/__pycache__/
