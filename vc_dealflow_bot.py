@@ -10,7 +10,7 @@ import time
 # --- CONFIGURATION ---
 
 # --- Main Setup ---
-GOOGLE_SHEET_ID = "1X1bVNsZJLB9hHX-l7T0hLrb4d_R3BCJyfeJAtpDComk" 
+GOOGLE_SHEET_ID = "1X1bVNsZJLB9hHX-l7T0hLrb4d_R3BCJyfeJAtpDComk" #enter your sheet id
 SERVICE_ACCOUNT_FILE = 'credentials.json'
 
 # --- Investment Theses (Worksheet Name: [Keywords]) ---
