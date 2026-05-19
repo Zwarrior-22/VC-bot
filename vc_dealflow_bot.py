@@ -7,10 +7,16 @@ from gspread.exceptions import WorksheetNotFound, APIError
 from datetime import datetime
 import time
 
+# --- NEW NLP IMPORTS ---
+import nltk
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+# Quietly downloads the VADER lexicon required for sentiment scoring
+nltk.download('vader_lexicon', quiet=True)
+
 # --- CONFIGURATION ---
 
 # --- Main Setup ---
-GOOGLE_SHEET_ID = "1X1bVNsZJLB9hHX-l7T0hLrb4d_R3BCJyfeJAtpDComk" #enter your sheet id
+GOOGLE_SHEET_ID = "1X1bVNsZJLB9hHX-l7T0hLrb4d_R3BCJyfeJAtpDComk" 
 SERVICE_ACCOUNT_FILE = 'credentials.json'
 
 # --- Investment Theses (Worksheet Name: [Keywords]) ---
@@ -58,7 +64,8 @@ def setup_google_sheets(sheet_id, theses_config):
         sheet = client.open_by_key(sheet_id)
         
         worksheets = {}
-        header = ['Source', 'Company/Title', 'Description', 'Link', 'Date Found', 'Published Date']
+        # Added 'Sentiment Score' to the sheet header
+        header = ['Source', 'Company/Title', 'Description', 'Link', 'Date Found', 'Published Date', 'Sentiment Score']
         
         for worksheet_name in theses_config.keys():
             try:
@@ -92,13 +99,14 @@ def setup_google_sheets(sheet_id, theses_config):
 
 def get_existing_links(worksheets_dict):
     """
-    Fetches all links from all thesis worksheets to avoid duplicates.
+    Fetches all links from all thesis worksheets to avoid duplicates. Filters empty values.
     """
     existing_links = set()
     print("Fetching existing links from all worksheets to prevent duplicates...")
     try:
         for worksheet_name, worksheet in worksheets_dict.items():
-            links = worksheet.col_values(4)  # 4th column is 'Link'
+            # Filter empty strings or None values from pre-allocated blank rows
+            links = [lk for lk in worksheet.col_values(4) if lk]
             existing_links.update(links)
         print(f"Found {len(existing_links)} total unique links across all sheets.")
         return existing_links
@@ -162,11 +170,13 @@ def fetch_hackernews_launches():
 
 def categorize_startups(startup_list, theses_config):
     """
-    Categorizes startups based on the defined theses.
-    A startup is assigned to the *first* thesis it matches.
+    Categorizes startups based on the defined theses and runs NLP sentiment parsing.
     """
-    print("Categorizing startups based on your theses...")
+    print("Categorizing startups and analyzing text sentiment...")
     categorized_startups = {thesis_name: [] for thesis_name in theses_config.keys()}
+    
+    # Initialize VADER Sentiment Analyzer
+    sia = SentimentIntensityAnalyzer()
     
     # Pre-compile keyword sets for efficiency
     theses_keywords = {
@@ -177,12 +187,17 @@ def categorize_startups(startup_list, theses_config):
     for startup in startup_list:
         content_to_check = (startup['title'] + " " + startup['description']).lower()
         
+        # --- Run Sentiment Scoring ---
+        # Polarity compound score ranges from -1 (negative) to +1 (positive)
+        sentiment_metrics = sia.polarity_scores(content_to_check)
+        startup['sentiment_score'] = str(round(sentiment_metrics['compound'], 2))
+        
         for thesis_name, keywords in theses_keywords.items():
             if any(keyword in content_to_check for keyword in keywords):
                 categorized_startups[thesis_name].append(startup)
                 break  # Stop at the first match
             
-    print("Categorization complete.")
+    print("Categorization and analysis complete.")
     for thesis_name, startups in categorized_startups.items():
         print(f"  - Found {len(startups)} startups for '{thesis_name}' thesis.")
         
@@ -190,7 +205,7 @@ def categorize_startups(startup_list, theses_config):
 
 def add_startups_to_sheets(worksheets_dict, categorized_startups, existing_links):
     """
-Update the `add_startups_to_sheets` function in `vc_dealflow_bot.py` to truncate the description to 500 characters, handle `None` descriptions gracefully, and ensure all dates are formatted as strings before appending to the sheet.
+    Truncates descriptions, handles types safely, and appends rows (including sentiment score).
     """
     print("\nAdding new startups to Google Sheet...")
     total_added = 0
@@ -206,7 +221,7 @@ Update the `add_startups_to_sheets` function in `vc_dealflow_bot.py` to truncate
         for s in startups_to_add:
             if s['link'] not in existing_links:
                 
-                # Ensure description is a string and truncate
+                # Ensure description is a string and truncate safely
                 description = s.get('description') or ""
                 if not isinstance(description, str):
                     description = str(description)
@@ -223,9 +238,10 @@ Update the `add_startups_to_sheets` function in `vc_dealflow_bot.py` to truncate
                     description,
                     s['link'],
                     today_str,
-                    published_date
+                    published_date,
+                    s['sentiment_score'] # Appends directly into our new 7th column
                 ])
-                existing_links.add(s['link']) # Add to set to prevent duplicates in same run
+                existing_links.add(s['link']) # Avoid internal batch duplicates
         
         if not new_rows_data:
             print(f"No new startups to add to '{worksheet_name}'.")
@@ -271,7 +287,7 @@ def main():
     all_startups.extend(fetch_rss_feed(VENTUREBEAT_RSS_URL, "VentureBeat"))
     print(f"\nFound {len(all_startups)} total startups from all sources.")
     
-    # 4. Categorize startups based on defined theses
+    # 4. Categorize startups based on defined theses and calculate sentiment metric
     categorized_startups = categorize_startups(all_startups, THESES)
     
     # 5. Add new, relevant startups to their corresponding sheets
@@ -281,4 +297,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
