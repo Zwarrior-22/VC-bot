@@ -1,60 +1,95 @@
-# **VC Deal Flow Bot: Setup Guide**
+```markdown
+# **MarketPulse: Automated Venture Intelligence Pipeline**
 
-You MUST follow these steps to get the vc\_dealflow\_bot.py script to run. This guide will walk you through setting up the necessary Google Cloud and Google Sheets permissions.
+**MarketPulse** is a lightweight, hyper-leveraged venture sourcing pipeline designed to consume the execution tax of deal flow tracking. Instead of relying on manual information routing, it continuously ingests raw, unstructured data from across the tech ecosystem, running an on-the-fly analytical layer to map findings directly to core investment theses.
 
-## **Required Python Libraries**
+---
 
-First, you need to install the required Python libraries.
+## **Technical Architecture Overview**
 
-pip install requests feedparser gspread google-auth pandas
+* **Data Ingestion Layer:** Concurrent parsing of RSS feeds and ecosystem APIs (including structured HackerNews `Launch HN` endpoint strings).
+* **NLP & Analytical Layer:** Integrated VADER (Valence Aware Dictionary and sEntiment Reasoner) sentiment classification via `NLTK` to score market signal intensity.
+* **Deterministic Deduplication:** State tracking utilizing $O(1)$ memory lookup loops to filter out operational data duplication before network syncing.
+* **Storage Syncing:** Dynamic worksheet provisioning and batched payload distribution integrated with the Google Sheets API, featuring `HTTP 429` rate-limiting back-off recovery.
+
+---
+
+## **Required Dependencies**
+
+Ensure your local runtime environment or cloud worker has the following packages installed:
+
+```bash
+pip install requests feedparser gspread google-auth pandas nltk
+
+```
+
+---
 
 ## **Step 1: Set up Google Cloud & Service Account**
 
-The script needs a "service account" (a robot user) to automatically edit your Google Sheet.
+To establish programmatic authentication for the script's automated syncing layer, configure a dedicated GCP service account:
 
-1. **Go to the Google Cloud Console:** [console.cloud.google.com](https://console.cloud.google.com/)  
-2. **Create a New Project:**  
-   * Click the project dropdown at the top of the page and select "New Project".  
-   * Give it a name, like "VC Sourcing Bot", and click "Create".  
-3. **Enable the Google Drive & Google Sheets APIs:**  
-   * In the search bar at the top, search for and select **"Google Drive API"**. Click **"Enable"**. (This is still needed for the service account to have file-level permissions).  
-   * Do the same for **"Google Sheets API"**. Search for it and click **"Enable"**.  
-4. **Create a Service Account:**  
-   * In the search bar, search for and select **"Service Accounts"**.  
-   * Click **"+ Create Service Account"** at the top.  
-   * Give it a name (e.g., "sheets-editor-bot") and a description. Click "Create and Continue".  
-   * **Grant Access (Important):** For "Role", select **"Project" \> "Editor"**. This gives it permission to *act* within your project.  
-   * Click "Continue", then "Done".  
-5. **Get Your Credentials File (credentials.json):**  
-   * You should now see your new service account in the list. Click the three-dot "Actions" menu on the right and select **"Manage keys"**.  
-   * Click **"Add Key" \> "Create new key"**.  
-   * Choose **JSON** as the key type and click **"Create"**.  
-   * A file will automatically download. **Rename this file to credentials.json** and place it in the **exact same folder** as your vc\_dealflow\_bot.py script.
+1. **Access Google Cloud Console:** Navigate to [console.cloud.google.com](https://console.cloud.google.com/).
+2. **Initialize Project:** Click the project dropdown menu at the top, select **"New Project"**, name it `MarketPulse`, and initialize it.
+3. **Enable API Ecosystems:** * Search for **"Google Drive API"** in the top search bar and click **"Enable"** (required for file-level scoping).
+* Search for **"Google Sheets API"** and click **"Enable"**.
 
-## **Step 2: Set up Your Google Sheet**
 
-1. **Create a New Google Sheet:** Go to [sheets.google.com](https://sheets.google.com/) and create a new, blank sheet. You can name it anything you like (e.g., "VC Deal Flow").  
-2. **Get the Sheet ID (CRITICAL):**  
-   * Look at the URL in your browser. The Sheet ID is the long string of letters and numbers in the middle.  
-   * **Example URL:** https://docs.google.com/spreadsheets/d/**1X1bVNsZjhNnx-T7-t0HLrb4cL\_R38cfeylAtpDComk**/edit  
-   * **Your ID is:** 1X1bVNsZjhNnx-T7-t0HLrb4cL\_R38cfeylAtpDComk  
-   * Copy this ID. You will need it in the next step.  
-3. **Share the Sheet (CRITICAL):**  
-   * Open your credentials.json file.  
-   * Find the line that looks like "client\_email": "your-bot-name@...iam.gserviceaccount.com".  
-   * Copy this entire email address.  
-   * Go back to your Google Sheet and click the **"Share"** button (top right).  
-   * Paste the service account's email address into the "Add people and groups" box.  
-   * Make sure it has the **"Editor"** role, and click **"Send"** (you can uncheck "Notify people").
+4. **Provision Service Account:**
+* Navigate to **"Service Accounts"** via the search bar.
+* Select **"+ Create Service Account"**. Name it `marketpulse-pipeline-node`.
+* **IAM Permissions (Critical):** Under "Role", assign **"Project" > "Editor"** to grant operational clearance within the scope of this project. Click **Done**.
 
-## **Step 3: Run the Script**
 
-You're all set\!
+5. **Generate Private Key (credentials.json):**
+* Select your newly created service account from the list. Click the three-dot action menu and choose **"Manage keys"**.
+* Click **"Add Key" > "Create new key"**, choosing **JSON** as the structure type.
+* Download the file, rename it exactly to `credentials.json`, and place it in the root directory of the repository alongside the main script.
 
-1. Make sure your vc\_dealflow\_bot.py and credentials.json are in the same directory.  
-2. Open vc\_dealflow\_bot.py and paste your **Sheet ID** into the GOOGLE\_SHEET\_ID variable at the top of the file (around line 14).  
-3. Run the script from your terminal:
 
-python vc\_dealflow\_bot.py
 
-The first time it runs, it will create a new tab (worksheet) called "Sourced Startups", add a header, and then populate it with all the relevant startups it finds. The next time you run it, it will only add the *new* ones.
+---
+
+## **Step 2: Initialize Storage Endpoint**
+
+1. **Provision Spreadsheet:** Navigate to [sheets.google.com](https://sheets.google.com/) and spin up a clean worksheet.
+2. **Extract Sheet ID:**
+* Isolate the unique resource identifier string embedded within your browser's URL path.
+* *Example URL:* `https://docs.google.com/spreadsheets/d/1X1bVNsZJLB9hHX-l7T0hLrb4d_R3BCJyfeJAtpDComk/edit`
+* *Target ID:* `1X1bVNsZJLB9hHX-l7T0hLrb4d_R3BCJyfeJAtpDComk`
+
+
+3. **Authorize Pipeline Access:**
+* Open your local `credentials.json` file and extract the `"client_email"` string value (e.g., `marketpulse-pipeline-node@...iam.gserviceaccount.com`).
+* Return to your Google Sheet interface, click **Share** in the upper-right corner, paste the client email address, and grant it explicit **Editor** permissions.
+
+
+
+---
+
+## **Step 3: Running the Pipeline**
+
+1. Ensure `vc_dealflow_bot.py` and your authorized `credentials.json` are paired within the exact same root path.
+2. Open `vc_dealflow_bot.py` and paste your extracted resource identifier directly into the global configuration variable:
+```python
+GOOGLE_SHEET_ID = "YOUR_EXTRACTED_SHEET_ID_HERE"
+
+```
+
+
+3. Execute the orchestration pipeline from your terminal:
+```bash
+python vc_dealflow_bot.py
+
+```
+
+
+
+### **Automated Lifecycle Processing:**
+
+* **First Run:** The script interfaces with your target sheet, automatically checks for structural compatibility, dynamically provisions new isolated sheets for configured investment theses (`AI & ML`, `Future of Data`, `Developer Tools`, `General B2B`), and stamps out a 7-column matrix: `['Source', 'Company/Title', 'Description', 'Link', 'Date Found', 'Published Date', 'Sentiment Score']`.
+* **Subsequent Executions:** The script queries existing states, drop-filters previously cataloged source links, evaluates incoming startup updates for keyword matches, applies sentiment polarity rankings, and appends the new signals into your live dashboard.
+
+```
+
+```
